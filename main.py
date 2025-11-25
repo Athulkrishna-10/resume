@@ -73,7 +73,42 @@ Your task is to:
    - Missing Skills / Gaps
    - Suggested Resume Improvements
    - Suggested New Bullet Points
-   - ATS Score Estimate (0–100)"""
+   - ATS Score Estimate (0–100)
+  ATS-FRIENDLY RESUME CHECKLIST
+
+1. Formatting
+   ✔ Simple layout, no tables/columns
+   ✔ No images, icons, graphics
+   ✔ Standard fonts (Arial, Calibri, Times New Roman)
+
+2. File Type
+   ✔ PDF (text-based) or DOCX
+   ✘ Avoid scanned PDFs
+
+3. Keywords
+   ✔ Match skills/tools from JD
+   ✔ Repeat important keywords naturally
+
+4. Structure
+   ✔ Clear sections: Summary, Skills, Experience, Projects, Education
+   ✔ Avoid creative headings
+
+5. Bullet Points
+   ✔ Start with action verbs (Developed, Led, Implemented)
+   ✔ Add measurable results (e.g., “Improved speed by 30%”)
+
+6. Plain Text Test
+   ✔ Paste resume into Notepad
+   ✔ If readable and structured → ATS-friendly
+
+Quick Summary:
+✔ Simple format  
+✔ Right keywords  
+✔ Strong verbs  
+✔ Quantified impact  
+✔ No images/tables  
+✔ Text readable in plain format
+"""
 
     client = Groq(api_key=APIKEY)
     completion = client.chat.completions.create(
