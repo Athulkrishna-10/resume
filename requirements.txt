@@ -1,0 +1,8 @@
+fastapi
+groq
+pdfminer.high_level
+difflib
+re
+json
+python-dotenv
+python-multipart

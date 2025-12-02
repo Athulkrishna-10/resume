@@ -1,133 +1,177 @@
 from groq import Groq
-from fastapi import FastAPI,UploadFile,File
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, UploadFile, File
 from pdfminer.high_level import extract_text
+from fastapi.responses import FileResponse
 from dotenv import load_dotenv
-from pydantic import BaseModel
-import os
+import os, json, difflib, re
 
 app = FastAPI()
 
+
 @app.get("/")
 def home():
-    return FileResponse("home.html")
+    return FileResponse("home.html", media_type="text/html")
+
+
+
+def clean(t: str):
+    return re.sub(r"\s+", " ", t.lower()).strip()
+
+
+def similarity(a: str, b: str):
+    return difflib.SequenceMatcher(None, a, b).ratio()
+
+
+def keyword_overlap(resume_text, jd_text):
+    r = set(clean(resume_text).split())
+    j = set(clean(jd_text).split())
+    if not j:
+        return 0
+    return len(r.intersection(j)) / len(j)
+
 
 @app.post("/upload")
-async def extraction(JD: UploadFile = File(...), resume: UploadFile = File(...)):
-    
-    global resume_text, JD_text
+async def upload(resume: UploadFile = File(...), jd: UploadFile = File(...)):
+    resume_text = extract_text(resume.file)
+    jd_text = extract_text(jd.file)
 
-    resume_path = f"./savepdf/{resume.filename}"
-    with open(resume_path, "wb") as f:
-        f.write(await resume.read())
-        resume_text = extract_text(resume_path)
-        
-    JD_path = f"./savepdf/{JD.filename}"
-    with open(JD_path, "wb") as f:
-        f.write(await JD.read())
-        JD_text = extract_text(JD_path)
-    return {"resume":resume_text ,"JD":JD_text}
-
-class InputData(BaseModel):
-    resume_text: str
-    JD_text: str
+    return {
+        "resume_preview": resume_text[:200],
+        "jd_preview": jd_text[:200],
+        "message": "Files uploaded and extracted successfully"
+    }
 
 
 @app.post("/model")
+async def model(resume: UploadFile = File(...), jd: UploadFile = File(...)):
 
-def model(data:InputData):
-    resume_text = data.resume_text
-    JD_text = data.JD_text
+    resume_text = extract_text(resume.file)
+    jd_text = extract_text(jd.file)
+
+    resume_clean = clean(resume_text)
+    jd_clean = clean(jd_text)
+
+    sim = similarity(resume_clean, jd_clean)
+    key_match = keyword_overlap(resume_clean, jd_clean)
+
+    perfect_match_flag = (sim >= 0.85 or key_match >= 0.85)
+
+    print("Similarity Score:", sim)
+    print("Keyword Match Score:", key_match)
+    print("Perfect Match Flag:", perfect_match_flag)
+
     load_dotenv()
     APIKEY = os.getenv("APIKEY")
+    client = Groq(api_key=APIKEY)
+
+  
     system_prompt = f"""
-    based on the job description: {JD_text} review the resume:{resume_text}
-    
-    You are an expert ATS and Resume Optimization Assistant.
+You are a strict JSON generator.
 
-Your task is to:
-1. Read the Job Description (JD) and extract:
-   - Key responsibilities
-   - Required skills
-   - Preferred skills
-   - Domain-specific keywords
-   - Tools/technologies mentioned
-2. Read the candidate’s resume and extract:
-   - Skills
-   - Experience points
-   - Achievements
-   - Tools & technologies
-3. Compare JD and resume using semantic understanding.
-4. Output clear, structured suggestions including:
-   - Missing skills or keywords the resume should include
-   - Experience points that should be rephrased to better match the JD
-   - Irrelevant content that can be removed
-   - New bullet points the candidate can add
-   - ATS optimization tips (action verbs, measurable results, keyword placement)
-5. Ensure suggestions are specific, actionable, and tailored to the given JD.
-6. NEVER modify the resume unless explicitly asked—only provide suggestions.
-7. Final output format:
-   - JD Summary
-   - Resume Summary
-   - Skill Match Analysis
-   - Missing Skills / Gaps
-   - Suggested Resume Improvements
-   - Suggested New Bullet Points
-   - ATS Score Estimate (0–100)
-  ATS-FRIENDLY RESUME CHECKLIST
+You must obey these rules EXACTLY:
 
-1. Formatting
-   ✔ Simple layout, no tables/columns
-   ✔ No images, icons, graphics
-   ✔ Standard fonts (Arial, Calibri, Times New Roman)
+100% MATCH RULE:
+If perfect_match_flag = true:
+- overall_score = 100
+- ALL category scores = 100
+- ALL category status = "excellent"
+- ALL improvements = ""
+- matched_keywords = all possible keywords extracted from resume/jd
+- missing_keywords = []
+- suggestions = []
 
-2. File Type
-   ✔ PDF (text-based) or DOCX
-   ✘ Avoid scanned PDFs
+If perfect_match_flag = false:
+- Evaluate normally.
 
-3. Keywords
-   ✔ Match skills/tools from JD
-   ✔ Repeat important keywords naturally
-
-4. Structure
-   ✔ Clear sections: Summary, Skills, Experience, Projects, Education
-   ✔ Avoid creative headings
-
-5. Bullet Points
-   ✔ Start with action verbs (Developed, Led, Implemented)
-   ✔ Add measurable results (e.g., “Improved speed by 30%”)
-
-6. Plain Text Test
-   ✔ Paste resume into Notepad
-   ✔ If readable and structured → ATS-friendly
-
-Quick Summary:
-✔ Simple format  
-✔ Right keywords  
-✔ Strong verbs  
-✔ Quantified impact  
-✔ No images/tables  
-✔ Text readable in plain format
+HARD RULES:
+- Output ONLY valid JSON.
+- No markdown.
+- No code blocks.
+- No text outside JSON.
 """
 
-    client = Groq(api_key=APIKEY)
+  
+    user_prompt = f"""
+perfect_match_flag = {str(perfect_match_flag).lower()}
+
+RESUME TEXT:
+{resume_text}
+
+JOB DESCRIPTION TEXT:
+{jd_text}
+
+Your job:
+
+1. If perfect_match_flag = true:
+   - You MUST follow the 100% scoring rule from the system prompt.
+   - DO NOT evaluate normally.
+
+2. If perfect_match_flag = false:
+   - Score normally based on resume vs JD.
+
+Analyze the resume and job description and return an ATS evaluation.
+
+Your task:
+
+For each category:
+- summary (1–2 sentences)
+- detailed improvements:
+-you need to compare job description and resume then you want to answer
+    - MUST contain 3–8 content 
+    - MUST NOT use any Unicode or special bullet characters
+    - MUST be specific, actionable, and deeply detailed
+    - MUST include ATS optimization tips
+    
+    - MUST include missing elements the candidate should 
+    - MUST avoid generic phrases
+    - MUST be useful and professional
+add
+Return output ONLY in this exact JSON:
+
+{{
+  "overall_score": 0,
+  "categories": {{
+    "education": {{ "score": 0, "status": "", "summary": "", "improvements": "" }},
+    "formatting": {{ "score": 0, "status": "", "summary": "", "improvements": "" }},
+    "contact_information": {{ "score": 0, "status": "", "summary": "", "improvements": "" }},
+    "skills": {{ "score": 0, "status": "", "summary": "", "improvements": "" }},
+    "work_experience": {{ "score": 0, "status": "", "summary": "", "improvements": "" }},
+    "ats_compatibility": {{ "score": 0, "status": "", "summary": "", "improvements": "" }},
+    "keywords": {{ "score": 0, "status": "", "summary": "", "improvements": "" }},
+    "summary": {{ "score": 0, "status": "", "summary": "", "improvements": "" }}
+  }},
+  "matched_keywords": [],
+  "missing_keywords": [],
+  "suggestions": []
+}}
+"""
+
+   
     completion = client.chat.completions.create(
-      model="openai/gpt-oss-20b",
-      messages=[
-      {
-        "role": "user",
-        "content": system_prompt
-      }
-    ],
-    temperature=1,
-    max_completion_tokens=8192,
-    top_p=1,
-    reasoning_effort="medium",
-    stream=True,
-    stop=None
-  )
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        max_completion_tokens=1500,
+        temperature=0.0
+    )
 
-    fullanswer = ""
-    for chunk in completion:fullanswer += chunk.choices[0].delta.content or ""
-    return fullanswer
+    raw_output = completion.choices[0].message.content.strip()
 
+    cleaned = raw_output.replace("```json", "").replace("```", "").replace("`", "").strip()
+
+    first = cleaned.find("{")
+    last = cleaned.rfind("}")
+
+    if first == -1 or last == -1:
+        return {"error": "Invalid JSON returned", "raw": raw_output}
+
+    cleaned_json = cleaned[first:last + 1]
+
+    try:
+        parsed = json.loads(cleaned_json)
+    except json.JSONDecodeError:
+        return {"error": "JSON parsing failed", "raw": raw_output, "cleaned": cleaned_json}
+
+    return parsed

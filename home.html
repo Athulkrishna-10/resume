@@ -1,173 +1,220 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>Resume – JD Analyzer</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ATS Resume & JD Analyzer</title>
 
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+    body {
+        margin: 0;
+        font-family: Arial, sans-serif;
+        background: #f8f9fc;
+    }
 
-    <style>
-        body {
-            font-family: "Segoe UI", Arial, sans-serif;
-            background: #edf1f7;
-            margin: 0;
-            padding: 0;
-        }
-        .container {
-            width: 75%;
-            margin: 40px auto;
-        }
-        .card {
-            background: #fff;
-            padding: 25px;
-            border-radius: 12px;
-            box-shadow: 0px 4px 12px rgba(0,0,0,0.12);
-            margin-bottom: 30px;
-        }
-        input[type="file"], button {
-            width: 100%;
-            padding: 12px;
-            margin-top: 8px;
-            border-radius: 8px;
-            border: 1px solid #ccc;
-            font-size: 15px;
-        }
-        button {
-            background: #3b7ddd;
-            color: white;
-            border: none;
-            font-weight: bold;
-            cursor: pointer;
-        }
-        #result {
-            padding: 20px;
-            background: #f7faff;
-            border-left: 5px solid #3b7ddd;
-            border-radius: 10px;
-            min-height: 200px;
-            font-size: 16px;
-            line-height: 1.6;
-            overflow-x: auto;
-        }
-        #result table {
-            border-collapse: collapse;
-            width: 100%;
-        }
-        #result th, #result td {
-            border: 1px solid #ccc;
-            padding: 8px;
-        }
-        #result th {
-            background: #e3e8f0;
-        }
-    </style>
+    .container {
+        max-width: 900px;
+        margin: auto;
+        padding: 20px;
+    }
+
+    h1 {
+        text-align: center;
+        color: #283593;
+        margin-bottom: 20px;
+    }
+
+    .card {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        box-shadow: 0px 4px 12px rgba(0,0,0,0.1);
+        margin-bottom: 20px;
+    }
+
+    label {
+        font-weight: bold;
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    input[type="file"] {
+        padding: 10px;
+        background: #eef1f7;
+        border-radius: 6px;
+        width: 100%;
+    }
+
+    button {
+        background: #283593;
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-top: 10px;
+        font-size: 16px;
+        width: 100%;
+    }
+
+    button:hover {
+        background: #1a237e;
+    }
+
+    #preview-box {
+        white-space: pre-wrap;
+        background: #f1f3fa;
+        padding: 15px;
+        border-radius: 10px;
+        border-left: 5px solid #283593;
+        display: none;
+    }
+
+    #markdown-output {
+        background: #fff;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 20px;
+        border-left: 4px solid #283593;
+        display: none;
+    }
+
+    .loading {
+        display: none;
+        text-align: center;
+        font-size: 18px;
+        color: #283593;
+        padding: 10px;
+    }
+</style>
+
+<!-- Markdown Renderer -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
 </head>
 <body>
 
 <div class="container">
 
+    <h1>ATS Resume & Job Description Analyzer</h1>
+
     <div class="card">
-        <h1>Resume & JD Analyzer</h1>
-        <form id="uploadForm">
-            <input type="file" id="resumeFile" accept="application/pdf" required>
-            <input type="file" id="jdFile" accept="application/pdf" required>
-            <button type="submit">Upload & Extract</button>
-        </form>
+        <label>Select Resume (PDF)</label>
+        <input type="file" id="resume" accept="application/pdf">
+
+        <label style="margin-top:15px;">Select Job Description (PDF)</label>
+        <input type="file" id="jd" accept="application/pdf">
+
+        <button onclick="uploadFiles()">Upload & Preview</button>
+
+        <div id="preview-box"></div>
     </div>
 
     <div class="card">
-        <h2>Run AI Model</h2>
-        <button id="runModelBtn" disabled>Run Model</button>
-    </div>
+        <button onclick="analyze()">Run ATS Analysis</button>
+        <div class="loading" id="loading">Processing... Please wait</div>
 
-    <div class="card">
-        <h2>AI Output</h2>
-        <div id="result">Your analyzed output will appear here...</div>
+        <div id="markdown-output"></div>
     </div>
 
 </div>
 
 <script>
-let extractedResumeText = "";
-let extractedJDText = "";
+async function uploadFiles() {
+    const resume = document.getElementById("resume").files[0];
+    const jd = document.getElementById("jd").files[0];
 
-// Upload PDFs
-document.getElementById("uploadForm").addEventListener("submit", async (e) => {
-    e.preventDefault();
+    if (!resume || !jd) {
+        alert("Please upload both files!");
+        return;
+    }
 
-    const formData = new FormData();
-    formData.append("resume", document.getElementById("resumeFile").files[0]);
-    formData.append("JD", document.getElementById("jdFile").files[0]);
+    let formData = new FormData();
+    formData.append("resume", resume);
+    formData.append("jd", jd);
 
-    const response = await fetch("/upload", { method: "POST", body: formData });
-    const data = await response.json();
-
-    extractedResumeText = data.resume;
-    extractedJDText = data.JD;
-
-    alert("Uploaded successfully!");
-    document.getElementById("runModelBtn").disabled = false;
-});
-
-// Run AI Model
-document.getElementById("runModelBtn").addEventListener("click", async () => {
-    const resultBox = document.getElementById("result");
-    resultBox.innerHTML = "Processing AI response...";
-
-    const payload = {
-        resume_text: extractedResumeText,
-        JD_text: extractedJDText
-    };
-
-    const response = await fetch("/model", {
+    const res = await fetch("/upload", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body: formData
     });
 
-    let aiText = await response.text();
+    const data = await res.json();
 
-    // Clean up escaped characters
-    let cleanText = aiText
-        .replace(/^"|"$/g, "")
-        .replace(/\\n/g, "\n")
-        .replace(/\\"/g, '"')
-        .replace(/\\\\/g, "\\")
-        .replace(/\\t/g, "    ")
-        .replace(/\\/g, "");
+    const box = document.getElementById("preview-box");
+    box.style.display = "block";
+    box.innerText =
+        "Resume Preview:\n" + data.resume_preview +
+        "\n\nJob Description Preview:\n" + data.jd_preview;
+}
 
-    // 🔥 Extract only the required sections
-    let sectionsToKeep = [
-        "Skill Match Analysis",
-        "Missing Skills",
-        "Missing Skills / Gaps",
-        "Suggested Resume Improvements",
-        "Suggested New Bullet Points",
-        "ATS Score",
-        "ATS Score Estimate"
-    ];
 
-    let filtered = [];
-    let lines = cleanText.split("\n");
-    let capture = false;
+function convertToMarkdown(json) {
+    let md = `# ATS Resume Analysis\n`;
+    md += `**Overall Score:** ${json.overall_score}/100\n\n`;
 
-    for (let line of lines) {
-        if (sectionsToKeep.some(key => line.toLowerCase().includes(key.toLowerCase()))) {
-            capture = true;
-        }
-        if (capture) filtered.push(line);
+    md += `## Categories\n`;
+
+    for (const [key, value] of Object.entries(json.categories)) {
+        md += `### ${key.toUpperCase()}\n`;
+        md += `**Score:** ${value.score}\n\n`;
+        md += `**Status:** ${value.status}\n\n`;
+        md += `**Summary:**\n${value.summary}\n\n`;
+        md += `**Improvements:**\n${value.improvements}\n\n`;
     }
 
-    if (filtered.length === 0) {
-        filtered = ["No valid sections found"];
+    md += `## Matched Keywords\n`;
+    md += json.matched_keywords.length
+        ? json.matched_keywords.map(k => `- ${k}`).join("\n")
+        : "_None_";
+    md += `\n\n`;
+
+    md += `## Missing Keywords\n`;
+    md += json.missing_keywords.length
+        ? json.missing_keywords.map(k => `- ${k}`).join("\n")
+        : "_None_";
+    md += `\n\n`;
+
+    md += `## Suggestions\n`;
+    md += json.suggestions.length
+        ? json.suggestions.map(k => `- ${k}`).join("\n")
+        : "_None_";
+
+    return md;
+}
+
+
+async function analyze() {
+    const resume = document.getElementById("resume").files[0];
+    const jd = document.getElementById("jd").files[0];
+
+    if (!resume || !jd) {
+        alert("Please upload both files first!");
+        return;
     }
 
-    let finalMarkdown = filtered.join("\n");
+    let formData = new FormData();
+    formData.append("resume", resume);
+    formData.append("jd", jd);
 
-    resultBox.innerHTML = marked.parse(finalMarkdown);
-});
+    document.getElementById("loading").style.display = "block";
+
+    const res = await fetch("/model", {
+        method: "POST",
+        body: formData
+    });
+
+    const data = await res.json();
+
+    document.getElementById("loading").style.display = "none";
+
+    const markdownDiv = document.getElementById("markdown-output");
+    markdownDiv.style.display = "block";
+
+    // Convert JSON → Markdown → Render HTML
+    const md = convertToMarkdown(data);
+    markdownDiv.innerHTML = marked.parse(md);
+}
 </script>
 
 </body>
 </html>
-
